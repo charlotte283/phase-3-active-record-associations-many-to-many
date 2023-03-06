@@ -1,108 +1,264 @@
-# Many To Many Associations
+# One To Many Associations
 
 ## Learning Goals
 
-- Establish the many-to-many (or **has many through**) association in Active
+- Understand how and why Active Record implements associations between models
+- Use Active Record migrations and methods to build out a domain model that
+  associates classes
+- Establish the one-to-many (or **has-many/belongs-to**) association in Active
   Record
 
 ## Introduction
 
-In the previous lesson, we saw how to create a **one-to-many** association
-between two models using Active Record by following certain naming conventions
-and using the right foreign key on our tables when generating the migrations.
+We already know that we can build our SQL tables such that they associate with
+one another via **primary keys** and **foreign keys**. We can also use Active
+Record to access data across different tables by establishing associations in
+code, without having to write tons of code ourselves, following the idea of
+**convention over configuration**.
 
-In the SQL section, we learned about one other kind of relationship: the
-**many-to-many**, also known as the **has many through**, relationship. For
-instance, in a domain where a **cat** has many **owners** and an **owner** can
-also have many **cats**, we needed to create another table to join between those
-two tables:
+Active Record associations make it easy to establish relationships between our
+models, without having to write a ton of SQL ourselves. Sounds great, right? Now
+that we have you totally hooked, let's take a look at how we use these Active
+Record associations.
 
-![Pets Database ERD](https://curriculum-content.s3.amazonaws.com/phase-3/sql-table-relations-creating-join-tables/cats-cat_owners-owners.png)
+## How do we use Active Record Associations?
 
-In this lesson, we'll learn how to create a **many-to-many** relationship in
-Active Record. We'll continue working on our games and reviews domain, but this
-time we'll add a third model into the mix: a users model. We'll be setting up these relationships:
+Active Record makes it easy to implement one-to-many and many-to-many
+relationships between multiple models. In order to implement these
+relationships, we will need to do two things:
 
-- A game **has many** reviews
-- A game **has many** users, **through** reviews
-- A review **belongs to** a game
-- A review **belongs to** a user
-- A user **has many** reviews
-- A user **has many** games, **through** reviews
+1. Write a migration that creates tables with associations. For example, if a
+   cat belongs to an owner, the cats table should have an `owner_id` column.
+2. Use Active Record **macros** in the models to generate additional methods
+   that use the relationship between two database tables.
 
-Once we're done setting up the database tables, here's what the ERD will look like:
+## Overview
 
-![Game Reviews ERD](https://curriculum-content.s3.amazonaws.com/phase-3/active-record-associations-many-to-many/games-reviews-users-erd.png)
+In this lesson, we'll be building out a **one-to-many** relationship between two
+models: **games** and **reviews**. We'll set up our database so that a game
+**has many** reviews, and each review **belongs to** a specific game.
 
-To get started, run `bundle install`, then follow along with the code.
+By writing a few migrations and making use of the appropriate Active Record
+macros (more on that later), we will be able to:
 
-## Creating a Join Table
+- ask a game about its reviews
+- ask a review about its game
 
-Right now, we've got code for the `Game` model (and the `games` table), along
-with the code for the `Review` model (and the `reviews` table) from the previous
-lesson.
+Here's what our Entity Relationship Diagram (ERD) looks like:
 
-To start, let's add the code we'll need for the `User` model as well. We'll start
-by generating the migration:
+![Game Reviews ERD](https://curriculum-content.s3.amazonaws.com/phase-3/active-record-associations-one-to-many/games-reviews-erd.png)
+
+We will build these associations through the use of Active Record migrations and
+macros.
+
+## Building our Migrations
+
+### The Game Model
+
+A game will _have many_ reviews. Before we worry about the migration that will
+implement this in our reviews table, let's think about what that table will look
+like:
+
+| id  | title              | genre            | platform   | price |
+| --- | ------------------ | ---------------- | ---------- | ----- |
+| 1   | Breath of the Wild | Action-adventure | Switch     | 60    |
+
+Our games table doesn't need any information about the reviews, so it makes
+sense to generate this table first: it doesn't have any dependencies on another
+table. This makes sense even thinking about our domain in the real world: a game
+can exist without any reviews.
+
+Let's write the migration that will make this happen. Run this code to create
+a migration:
 
 ```console
-$ bundle exec rake db:create_migration NAME=create_users
+$ bundle exec rake db:create_migration NAME=create_games
 ```
 
-Let's create the `users` table with a `name` column:
+In the migration file, write the following migration:
 
 ```rb
-class CreateUsers < ActiveRecord::Migration[6.1]
+class CreateGames < ActiveRecord::Migration[6.1]
   def change
-    create_table :users do |t|
-      t.string :name
+    create_table :games do |t|
+      t.string :title
+      t.string :genre
+      t.string :platform
+      t.integer :price
       t.timestamps
     end
   end
 end
 ```
 
-We'll also need to modify the `reviews` table and add a foreign key to refer to
-our `users` table. Remember, each review now **belongs to** a specific user. Any
-time we create a **belongs to** relationship, we need a foreign key to establish
-this relationship. Let's go ahead and write a migration to update the `reviews`
-table:
+### The Review Model
+
+A review will **belong to** a specific game. What does that mean in terms of our
+database? Think back to what you learned about SQL and joining between multiple
+tables. How can we connect between a review and its associated game?
+
+That's right, we need a **foreign key**! Since a review belongs to a specific
+game, we need some way of indicating on the review _which_ specific game it
+belongs to.
+
+Let's take a look at what our `reviews` table will need to look like:
+
+| id  | score | comment    | game_id |
+| --- | ----- | ---------- | ------- |
+| 1   | 10    | A classic! | 1       |
+
+Notice we're using a `game_id` column to create a foreign key relationship with
+the `games` table. This naming convention is **very important**, as we'll see
+later: in order for Active Record to correctly understand the relationship
+between our tables, the **foreign key's name must match the name of the table
+where the primary key is located**.
+
+This is another place where following convention over configuration will allow
+Active Record to do a lot of work for us under the hood without us needing
+to write much code, so it bears repeating:
+
+In order for Active Record to correctly understand the relationship between our
+tables, the **foreign key's name must match the name of the table where the
+primary key is located**. For a `games` table, we create a `game_id` foreign
+key.
+
+Ok! Now that we know what we need to create, let's run this code to create a
+migration:
 
 ```console
-$ bundle exec rake db:create_migration NAME=add_user_id_to_reviews
+$ bundle exec rake db:create_migration NAME=create_reviews
 ```
 
-We'll use the `add_column` method to update the `reviews` table and add a
-`user_id` foreign key:
+In the migration file:
 
 ```rb
-class AddUserIdToReviews < ActiveRecord::Migration[6.1]
+class CreateReviews < ActiveRecord::Migration[6.1]
   def change
-    add_column :reviews, :user_id, :integer
+    create_table :reviews do |t|
+      t.integer :score
+      t.string :comment
+      t.integer :game_id # this is our foreign key
+      t.timestamps
+    end
   end
 end
 ```
 
-With that, our migrations are good to go! Run the new migrations to update
-the database and schema:
+Great! Now go ahead and run the following command in your terminal to
+run our migrations:
 
 ```console
 $ bundle exec rake db:migrate
 ```
 
-Run the seed file as well to populate the `games` and `reviews` tables:
+There is also some code in the `db/seeds.rb` file that we'll use to generate
+some data for our two models. In the seed file, we first create a game instance,
+then use the ID from that game instance to associate it with the corresponding
+review.
+
+Run this to seed the database:
 
 ```console
 $ bundle exec rake db:seed
 ```
 
-## Setting Up the Join Class
+## Building our Associations using Active Record Macros
 
-Now that we've updated the database, we can start working on updating our Active
-Record models. The first one we'll work on is the `Review` model. We want our
-model's code to reflect the change we made in the database, so that we can
-easily access data about which user left a review. Our `Review` model currently
-looks like this:
+### What is a macro?
+
+A macro is a method that writes code for us (think metaprogramming). You've used
+macros like `attr_reader` and `attr_accessor` already. Active Record comes with
+a few handy macros that, like `attr_reader` and `attr_accessor`, create new
+instance methods we can use with our classes.
+
+By invoking a few methods that come with Active Record, we can implement all of
+the associations we've been discussing!
+
+We'll be using the following Active Record macros (or methods):
+
+- [`has_many`][]
+- [`belongs_to`][]
+
+[`has_many`]: http://guides.rubyonrails.org/association_basics.html#the-has-many-association
+[`belongs_to`]: http://guides.rubyonrails.org/association_basics.html#the-belongs-to-association
+
+Let's get started.
+
+### A Review Belongs to a Game
+
+Our `Review` class is set up in `app/models/review.rb`. Notice that it inherits from
+`ActiveRecord::Base`. This is very important! If we don't inherit from
+`ActiveRecord::Base`, we won't get our fancy macro methods.
+
+```rb
+class Review < ActiveRecord::Base
+
+end
+```
+
+Let's start by talking through the code we want to be able to write here. Hop
+into your console by running:
+
+```console
+$ bundle exec rake console
+```
+
+From the console, access the first review:
+
+```rb
+# Access the first review instance in the database
+review = Review.first
+# => #<Review:0x00007ffc23c58e20 id: 1, score: 6, comment: "Velit a tenetur eius.", game_id: 1>
+
+# Get the game_id foreign key for the review instance
+review.game_id
+# => 1
+```
+
+We know that this review has some relationship to data in the `games` table. We
+could even use the foreign key to access that data directly:
+
+```rb
+# Find a specific game instance using an ID
+Game.find(review.game_id)
+# => #<Game:0x00007ffc2801e4e8 id: 1, title: "Metroid Prime", ...>
+```
+
+But it would be convenient to be able to access the game directly, by calling an
+instance method on the review itself. For instance, imagine we're building a
+website that shows game reviews. Wouldn't it be nice to have an easy way to
+access all the data about the game that's being reviewed, even though that
+information is stored in another table?
+
+We could write an instance method ourselves in the `Review` class to establish
+this relationship. Exit the console, then add this to your `Review` class:
+
+```rb
+class Review < ActiveRecord::Base
+  # a review belongs to a game
+  def game
+    # self is the review instance
+    Game.find(self.game_id)
+  end
+
+end
+```
+
+Then run `rake console` again. Now we can access any review's associated game
+directly by using this new instance method:
+
+```rb
+Review.first.game
+# => #<Game:0x00007ffc2801e4e8 id: 1, title: "Metroid Prime", ...>
+Review.last.game
+# => #<Game:0x00007f9c68130d38 id: 50, title: "Max Payne", ...>
+```
+
+Nice! However, since this is such a common task we'll need to perform, Active
+Record makes our lives a bit easier. This is where those macros come into play.
+
+Let's update the `Review` class to use the `belongs_to` macro instead of our
+custom method:
 
 ```rb
 class Review < ActiveRecord::Base
@@ -110,205 +266,219 @@ class Review < ActiveRecord::Base
 end
 ```
 
-We now also want our review to know which user it belongs to, so let's add that
-code as well:
+Now, exit the console and open it again to reload your code, and try using
+the `#game` instance method:
+
+```rb
+Review.first.game
+# => #<Game:0x00007ffc2801e4e8 id: 1, title: "Metroid Prime", ...>
+Review.last.game
+# => #<Game:0x00007f9c68130d38 id: 50, title: "Max Payne", ...>
+```
+
+As you can see, this method does the same job as our custom instance method,
+but with less work on our part. Thanks, Active Record!
+
+A couple notes on this code. While it seems like a lot of magic is happening in
+order for us to write `belongs_to :game` and have Active Record take care of
+establishing the connection between our classes, remember, this is all just Ruby
+code. `belongs_to` is a method that is inherited from `ActiveRecord::Base` that
+takes an argument of a symbol:
 
 ```rb
 class Review < ActiveRecord::Base
-  belongs_to :game
-  belongs_to :user
+  belongs_to(:game)
 end
 ```
 
-Now, we can create a new `Review` instance and associate it with a `User`
-**and** a `Game`. Run `rake console` and try it out:
+We just call the method without parentheses because it looks nicer.
 
-```rb
-# Get a game instance
-game = Game.first
-# Create a User instance
-user = User.create(name: "Liza")
-# Create a review that belongs to a game and a user
-review = Review.create(score: 8, game_id: game.id, user_id: user.id)
+Also, the name of the symbol we are passing to `belongs_to` must be
+**singular**: this is another important convention to follow so that all this
+"magic" works.
+
+When we use the association methods, Active Record generates some SQL code like
+this to access the data from the correct tables:
+
+```sql
+SELECT "games".*
+FROM "games"
+WHERE "games"."id" = 1
+LIMIT 1;
 ```
 
-Just like in the previous lesson, we can access data from the review instance
-about the associated game; but now, we can also access data about the associated user:
+### A Game Has Many Reviews
 
-```rb
-review.game
-# => #<Game:0x00007ff71a25f5d0 id: 1, title: "Diablo", genre: "Visual novel", ...>
-review.user
-# => #<User:0x00007ff71a26fe58 id: 1, name: "Liza", ...>
-```
-
-In Active Record parlance, we refer to this `Review` class as a "join" class,
-because we use it to join between two other classes in our application: the
-`Game` class and the `User` class. We need this association set up first before
-we'll be able to access data about the users directly from their games, and
-access data about the games directly from their users.
-
-## Creating a Many-to-Many Association with `has_many through`
-
-Let's start with the `Game` class. Here's what it looks like right now:
+Our `Game` class is set up in `app/models/game.rb`. We need to tell the
+`Game` class that each game instance can have many reviews. We will use the
+`has_many` macro to do it:
 
 ```rb
 class Game < ActiveRecord::Base
   has_many :reviews
+
 end
 ```
 
-As a reminder, when we use the `has_many` macro, Active Record generates
-an instance method `#reviews` that we can call on a `Game` instance to access
-all the associated reviews:
+Just like with `belongs_to`, following naming conventions is important: we use
+the **plural** for the `has_many` macro.
+
+And that's it! Now, because our `reviews` table has a `game_id` column and
+because our `Game` class uses the `has_many` macro, we can easily access a list
+of all reviews associated with any game! What this means in code is that we can
+now use the `#reviews` instance method to return a list of all the reviews
+belonging to a game:
 
 ```rb
 game = Game.first
 game.reviews
-# => [#<Review:0x00007ff71926dac8 id: 1, ...>, #<Review:0x00007ff71926d960 id: 2, ...>
+# => [#<Review:0x00007f9ddcaa8198 id: 1, score: 6, ...,  #<Review:0x00007f9de1612610 id: 2, score: 8, ...>, ...]
+game.reviews.count
+# 4
 ```
 
-However, if you'll recall, we updated our tables to support another
-relationship:
-
-- A game **has many** users, **through** reviews
-
-What this means for us in code is that it might be convenient to access a list
-of all the users who left reviews for a specific game from the game instance
-itself. In other words, it would be nice to be able to use a method like this
-to see all the users associated with a specific game:
+If we were to write this `#reviews` instance method out by hand, it'd look
+something like this:
 
 ```rb
-game.users
-# => [#<User>, #<User>]
+# app/models/review.rb
+class Game < ActiveRecord::Base
+
+  def reviews
+    Review.where(game_id: self.id)
+  end
+
+end
 ```
 
-Writing the SQL out to access this relationship would be a bit of a pain; we'd
-need to join the `reviews` table in order to access the correct users for a
-specific game:
+Again, by following conventions with our table names and foreign key names, we
+can use the macro to save us from writing this code out by hand.
+
+Here's the SQL that Active Record generates for this query:
 
 ```sql
-SELECT "users".*
-FROM "users"
-INNER JOIN "reviews"
-  ON "users"."id" = "reviews"."user_id"
+SELECT "reviews".*
+FROM "reviews"
 WHERE "reviews"."game_id" = 1
 ```
 
-Luckily for us, Active Record's `has_many` macro also can be used to establish
-this relationship and write that SQL for us! Here's how we can use it:
+Once again, we're using the same primary key/foreign key relationship between
+these two tables to establish this connection.
 
-```rb
-class Game < ActiveRecord::Base
-  has_many :reviews
-  has_many :users, through: :reviews
-end
+## Our Code in Action: Working with Associations
+
+All the tests should be passing now if you run `learn test`, so from here on
+we'll just be exploring the functionality provided by the `has_many` and
+`belongs_to` macros. Follow along with this code by running:
+
+```console
+$ bundle exec rake console
 ```
 
-By adding this second `has_many` macro, and using the `through:` option, we're
-now able to use that `#users` instance method with our games. Try it out
-(remember to exit your console and re-start it after updating your `Game`
-class):
+To recap what we've seen so far:
+
+Using the `belongs_to :game` macro in our `Review` class generates an instance
+method, `#game` that we can use to access the data about a game from the review:
+
+```rb
+# Get a review instance
+review = Review.first
+# call the #game instance method to return a Game instance
+review.game
+# => #<Game:0x00007f9de1710be8 id: 1, title: "Metroid Prime",...>
+```
+
+Using the `has_many :reviews` macro in our `Game` class generates an instance
+method, `#reviews` that we can use to access the data about reviews from the game:
+
+```rb
+# Get a game instance
+game = Game.first
+# call the #reviews instance method to return a list of Review instances
+game.reviews
+# => [#<Review:0x00007f9ddcb09100 id: 1, score: 6, ...>, #<Review:0x00007f9ddcb08f98 id: 2, score: 8, ...>]
+```
+
+In addition to these instance methods, both the `has_many` and `belongs_to`
+macros also provide some additional functionality to our classes.
+
+For example, after adding the `belongs_to` macro to our `Review` class, we can
+also more easily create new reviews that are associated with a game instance.
+You can see all the methods that Active Record provides in the
+[documentation on `belongs_to`][belongs_to methods].
+
+Previously, we'd need to create our `Review` instances like this:
 
 ```rb
 game = Game.first
-game.users
-# => [#<User:0x00007f96813a5d58 id: 1, name: "Liza", ...>]
+Review.create(score: 10, comment: "10 stars", game_id: game.id)
 ```
 
-We can now use Active Record to go **through** the join model, `Review`, from
-the `Game` model, to return the associated users, all without writing any SQL
-ourselves. Pretty cool!
-
-There are a couple important things to note when using the `has_many` macro with
-the `through:` option. Order matters — you must place the first `has_many` that
-references the join table **above** the second `has_many` that goes through that
-join table. This code won't work:
+After adding the `belongs_to` macro, we can also create new reviews by passing
+a `Game` instance directly, instead of passing the foreign key:
 
 ```rb
-class Game < ActiveRecord::Base
-  has_many :users, through: :reviews
-  has_many :reviews
-end
+game = Game.first
+Review.create(score: 10, comment: "10 stars", game: game)
 ```
 
-Active Record won't know how to go `through` the `reviews` table until you
-create the `has_many :reviews` association.
+In both cases, Active Record will generate the same SQL, so it is still using
+the `game_id` foreign key under the hood:
 
-Also, these are still just Ruby methods, so it might help to see them written
-out with parentheses to understand the syntax:
+```sql
+INSERT INTO "reviews" ("score", "comment", "game_id", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?)
+```
+
+We can also use the `create_game` method to generate a new game from
+scratch and automatically associate it with a review:
 
 ```rb
-class Game < ActiveRecord::Base
-  has_many(:reviews)
-  has_many(:users, through: :reviews)
-end
+# Create a review
+review = Review.create(score: 8, comment: "wow, what a game")
+# Create a game associated with the review
+review.create_game(title: "My favorite game")
+# Save the association
+review.save
 ```
 
-When calling `has_many`, we're passing in a first argument of a symbol that
-refers to the **table name** in our database (`:users`). In the second argument,
-we're passing a key-value pair, where the key is the `through` option, and the
-value is the `:reviews` symbol, which refers to the `#reviews` method from the
-first `has_many`. Phew!
+This will insert a row into the `reviews` table, then insert a row into the
+`games` table, and finally, update the review with the foreign key of the
+newly-created game.
 
-While we're at it, we can also set up the inverse relationship:
-
-- A user **has many** reviews
-- A user **has many** games, **through** reviews
-
-This will give us the ability to access all reviews for a particular user, as
-well as all the games a particular user has reviewed. The code will look similar
-to what we added to the `Game` model. Update the `User` class in
-`app/models/user.rb` with the following code:
+On the flip side, the `has_many` macro also provides some additional methods for
+the `Game` class. You can see them all in the
+[`has_many` docs][has_many methods]. One commonly used method from the
+`has_many` macro is the shovel (`<<`) method, which lets us generate a new
+review and associate it with an existing game:
 
 ```rb
-class User < ActiveRecord::Base
-  has_many :reviews
-  has_many :games, through: :reviews
-end
+game = Game.first
+game.reviews << Review.new(score: 3, comment: "meh")
 ```
 
-Now, in the console, you can access a review for a user, as well as a list of
-the games they have reviewed:
+This will insert a new row in the `reviews` table and give it a foreign key for
+the game instance.
+
+It also generates a `#create` method via the association:
 
 ```rb
-user = User.first
-user.reviews
-# => [#<Review:0x00007fc2a2ac01b8 id: 147, score: 8, ...>]
-user.games
-# => [#<Game:0x00007fc2a2b53710 id: 1, title: "Diablo", genre: "Visual novel", ...>]
+game = Game.first
+game.reviews.create(score: 4, comment: "it's alright I guess")
 ```
 
-Success! All of our models are now associated correctly, and have methods
-available that make it convenient for us to access data across multiple database
-tables using the primary key/foreign key relationship. Our Ruby code now reflects
-the associations we established:
+This method essentially does the same as the shovel method.
 
-![Game Reviews ERD](https://curriculum-content.s3.amazonaws.com/phase-3/active-record-associations-many-to-many/games-reviews-users-erd.png)
+There are other methods provided as well that will help with different CRUD
+actions related to the associations, so make sure to reference the
+[documentation][ar-associations] when the need arises!
 
 ## Conclusion
 
-The power of Active Record all boils down to understanding database
-relationships and following certain naming conventions. By leveraging
-"convention over configuration", we're able to quickly set up complex
-associations between multiple models with just a few lines of code.
-
-The **one-to-many** and **many-to-many** relationships are the most common when
-working with relational databases. You can apply the same concepts and code we
-used in this lesson to any number of different domains, for example:
-
-```txt
-Driver -< Ride >- Passenger
-Doctor -< Appointment >- Patient
-Actor -< Character >- Movie
-```
-
-The code required to set up these relationships would look very similar to the
-code we wrote in this lesson.
-
-By understanding the conventions Active Record expects you to follow, and how
-the underlying database relationships work, you have the ability to model all
-kinds of complex, real-world concepts in your code!
+In this lesson, we explored the most common kind of relationship between two
+models: the **one-to-many** or "has-many"/"belongs-to" relationship. With a
+solid understanding of how to connect databases using primary and foreign keys,
+we can take advantage of some helpful Active Record macros that make it easy to
+work with the database relationships from our Ruby code.
 
 ## Resources
 
